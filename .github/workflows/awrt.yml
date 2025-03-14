@@ -22,7 +22,7 @@ jobs:
   build:
     strategy:
       matrix:
-        device: [h29k]
+        device: [cat]
     runs-on: ubuntu-22.04
 
     steps:
