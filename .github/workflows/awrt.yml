@@ -118,7 +118,7 @@ jobs:
 
     - name: Upload Build Logs on Failure
       if: failure()
-      uses: actions/upload-artifact@v3.1.2
+      uses: actions/upload-artifact@v2
       with:
         name: build-log
         path: openwrt/build.log
