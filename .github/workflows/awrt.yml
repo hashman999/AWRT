@@ -13,6 +13,8 @@ env:
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
@@ -24,6 +26,30 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+    - name: Before freeing up disk space
+      run: df -hT
+
+    - name: "Optimize Disk Space - Deep Cleanup"
+      uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.1"
+      with:
+        operate_sudo: "True"
+        general_include: ".+"
+        general_exclude: |-
+          ^GCC$
+          ^G\+\+$
+          Clang
+          LLVM
+        docker_include: ".+"
+        docker_prune: "True"
+        docker_clean: "True"
+        apt_prune: "True"
+        apt_clean: "True"
+        homebrew_prune: "True"
+        homebrew_clean: "True"
+        npm_prune: "True"
+        npm_clean: "True"
+        os_swap: "True"
+
     - name: Optimize Disk Space
       uses: easimon/maximize-build-space@master
       with:
@@ -34,6 +60,9 @@ jobs:
         remove-haskell: 'true'
         remove-codeql: 'true'
         remove-docker-images: 'true'
+
+    - name: Free up disk space complete
+      run: df -hT
 
     - name: Checkout Code
       uses: actions/checkout@main
@@ -47,21 +76,11 @@ jobs:
       run: |
         git clone --filter=blob:none --depth=2 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Check Git Repository
+    - name: Execute DIY Part 1 Script
       run: |
+        chmod +x $DIY_P1_SH
         cd openwrt
-        if ! git rev-parse --is-inside-work-tree; then
-          echo "Not inside a Git repository, falling back to full build"
-          echo "FULL_BUILD=true" >> $GITHUB_ENV
-        else
-          echo "FULL_BUILD=false" >> $GITHUB_ENV
-        fi
-
-    - name: Clean tmp and toolchain directories
-      run: |
-        rm -rf openwrt/tmp/*
-        rm -rf openwrt/staging_dir/toolchain-*
-        rm -rf openwrt/build_dir/target-*
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update & Install Feeds
       run: |
@@ -92,16 +111,10 @@ jobs:
         echo "Toolchain is missing or incomplete, rebuilding..."
         make toolchain/install -j$(nproc) V=s
 
-    - name: Determine Build Type (Full or Incremental)
+    - name: Compile Firmware
       run: |
         cd openwrt
-        if [[ "$FULL_BUILD" == "true" ]] || git diff --name-only HEAD^ | grep -qE "target|kernel"; then
-            echo "Performing full compile"
-            make -j$(nproc) > build.log 2>&1 || (echo "Build failed, showing last 100 lines of log:" && tail -n 100 build.log && exit 1)
-        else
-            echo "Performing incremental compile"
-            make package/compile -j$(nproc) > build.log 2>&1 || (echo "Build failed, showing last 100 lines of log:" && tail -n 100 build.log && exit 1)
-        fi
+        make -j$(nproc) > build.log 2>&1 || (echo "Build failed, showing last 100 lines of log:" && tail -n 100 build.log && exit 1)
 
     - name: Upload Build Logs on Failure
       if: failure()
@@ -110,6 +123,40 @@ jobs:
         name: build-log
         path: openwrt/build.log
 
-    - name: Show ccache stats
+    - name: Upload firmware to Cowtransfer
+      if: steps.compile.outcome == 'success' && env.UPLOAD_COWTRANSFER == 'true'
       run: |
-        ccache -s
+        curl -fsSL git.io/file-transfer | sh
+        ./transfer cow --block 2621440 -s -p 64 --no-progress openwrt/bin/targets/*/* 2>&1 | tee cowtransfer.log
+        echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
+
+    - name: Upload firmware to WeTransfer
+      if: steps.compile.outcome == 'success' && env.UPLOAD_WETRANSFER == 'true'
+      run: |
+        curl -fsSL git.io/file-transfer | sh
+        ./transfer wet -s -p 16 --no-progress openwrt/bin/targets/*/* 2>&1 | tee wetransfer.log
+        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+
+    - name: Upload firmware to GitHub Releases
+      if: env.UPLOAD_RELEASE == 'true'
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.run_number }}
+        files: openwrt/bin/targets/*/*
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@v2
+      with:
+        retain_days: 1
+        keep_minimum_runs: 3
+
+    - name: Remove old Releases
+      uses: dev-drprasad/delete-older-releases@v0.1.0
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      with:
+        keep_latest: 3
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
