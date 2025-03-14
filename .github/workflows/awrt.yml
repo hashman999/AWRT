@@ -60,6 +60,12 @@ jobs:
         export CXX="ccache g++"
         ccache -s  # 显示 ccache 命中率
 
+    - name: Clean tmp and cache directories
+      run: |
+        rm -rf openwrt/tmp/*
+        rm -rf openwrt/staging_dir/target-*
+        rm -rf openwrt/build_dir/target-*
+
     - name: Cache OpenWrt dl directory
       uses: actions/cache@v3
       with:
@@ -112,6 +118,12 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
         make defconfig
+
+    - name: Re-fetch Kernel Sources
+      run: |
+        cd openwrt
+        make target/linux/clean
+        make target/linux/prepare
 
     - name: Determine Build Type (Full or Incremental)
       run: |
