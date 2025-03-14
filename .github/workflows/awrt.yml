@@ -97,11 +97,18 @@ jobs:
         cd openwrt
         if [[ "$FULL_BUILD" == "true" ]] || git diff --name-only HEAD^ | grep -qE "target|kernel"; then
             echo "Performing full compile"
-            make -j$(nproc) V=s
+            make -j$(nproc) > build.log 2>&1 || (echo "Build failed, showing last 100 lines of log:" && tail -n 100 build.log && exit 1)
         else
             echo "Performing incremental compile"
-            make package/compile -j$(nproc) V=s
+            make package/compile -j$(nproc) > build.log 2>&1 || (echo "Build failed, showing last 100 lines of log:" && tail -n 100 build.log && exit 1)
         fi
+
+    - name: Upload Build Logs on Failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-log
+        path: openwrt/build.log
 
     - name: Show ccache stats
       run: |
