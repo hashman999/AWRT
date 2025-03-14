@@ -13,6 +13,8 @@ env:
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
@@ -38,9 +40,15 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@main
 
+    - name: Reinstall GCC and essential build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install --reinstall -y build-essential gcc g++ g++-multilib
+        gcc --version
+        g++ --version
+
     - name: Install Dependencies
       run: |
-        sudo -E apt-get -qq update
         sudo -E apt-get -qq install ccache \
         ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
         bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
@@ -58,13 +66,7 @@ jobs:
         export PATH="/usr/lib/ccache:$PATH"
         export CC="ccache gcc"
         export CXX="ccache g++"
-        ccache -s  # 显示 ccache 命中率
-
-    - name: Clean tmp and cache directories
-      run: |
-        rm -rf openwrt/tmp/*
-        rm -rf openwrt/staging_dir/target-*
-        rm -rf openwrt/build_dir/target-*
+        ccache -s
 
     - name: Cache OpenWrt dl directory
       uses: actions/cache@v3
@@ -74,45 +76,24 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-openwrt-dl-
 
-    - name: Cache OpenWrt toolchain
-      uses: actions/cache@v3
-      with:
-        path: openwrt/staging_dir/toolchain-*
-        key: ${{ runner.os }}-openwrt-toolchain-${{ github.run_id }}
-        restore-keys: |
-          ${{ runner.os }}-openwrt-toolchain-
-
-    - name: Cache OpenWrt package feeds
-      uses: actions/cache@v3
-      with:
-        path: openwrt/package/feeds
-        key: ${{ runner.os }}-openwrt-packages-${{ github.run_id }}
-        restore-keys: |
-          ${{ runner.os }}-openwrt-packages-
-
     - name: Clone Source Code
       run: |
         git clone --filter=blob:none --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Select Device Config
+    - name: Clean tmp and cache directories
       run: |
-        echo "CONFIG_FILE=${{ matrix.device }}.config" >> $GITHUB_ENV
-
-    - name: Load Custom Feeds
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+        rm -rf openwrt/tmp/*
+        rm -rf openwrt/staging_dir/target-*
+        rm -rf openwrt/build_dir/target-*
 
     - name: Update & Install Feeds
       run: |
-        (cd openwrt && ./scripts/feeds install -a) & \
-        (cd openwrt && make download -j$(nproc) V=s) && wait
+        cd openwrt
+        ./scripts/feeds update -a || (echo "Feed update failed, retrying..." && sleep 5 && ./scripts/feeds update -a)
+        ./scripts/feeds install -a || (echo "Feed install failed, retrying..." && sleep 5 && ./scripts/feeds install -a)
 
     - name: Load Configuration
       run: |
-        [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
@@ -139,3 +120,28 @@ jobs:
     - name: Show ccache stats
       run: |
         ccache -s
+
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v1
+      if: env.UPLOAD_RELEASE == 'true'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: openwrt/bin/targets/*/*
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@v2
+      with:
+        retain_days: 1
+        keep_minimum_runs: 3
+
+    - name: Remove old Releases
+      uses: dev-drprasad/delete-older-releases@v0.1.0
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 3
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
