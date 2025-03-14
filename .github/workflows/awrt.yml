@@ -1,4 +1,4 @@
-name: Build OpenWrt
+name: AWRT
 
 on:
   repository_dispatch:
@@ -20,7 +20,7 @@ jobs:
   build:
     strategy:
       matrix:
-        device: [h29k, x86_64, raspberrypi4]
+        device: [h29k]
     runs-on: ubuntu-22.04
 
     steps:
