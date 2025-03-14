@@ -12,10 +12,10 @@ sed -i '$a src-git openclash https://github.com/vernesong/OpenClash.git' ./feeds
 sed -i '$a src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git' ./feeds.conf.default
 sed -i '$a src-git small https://github.com/kenzok8/small.git' ./feeds.conf.default
 sed -i '$a src-git argon https://github.com/jerrykuku/openwrt-package.git' ./feeds.conf.default
-sed -i '$a src-git luci-theme-design https://github.com/gngpp/luci-theme-design.git' ./feeds.conf.default
+sed -i '$a src-git lucithemedesign https://github.com/gngpp/luci-theme-design.git' ./feeds.conf.default
 sed -i '$a src-git HomeRedirect https://github.com/NueXini/HomeRedirect.git' ./feeds.conf.default
 sed -i '$a src-git telegrambot https://github.com/NueXini/telegrambot-openwrt.git' ./feeds.conf.default
-sed -i '$a src-git xmm-modem https://github.com/NueXini/xmm-modem.git' ./feeds.conf.default
+sed -i '$a src-git xmmmodem https://github.com/NueXini/xmm-modem.git' ./feeds.conf.default
 sed -i '$a src-git cdnspeedtest https://github.com/mingxiaoyu/cdnspeedtest-openwrt.git' ./feeds.conf.default
 sed -i '$a src-git openappfilter https://github.com/destan19/OpenAppFilter.git' ./feeds.conf.default
 sed -i '$a src-git smartdns https://github.com/pymumu/luci-app-smartdns.git' ./feeds.conf.default
