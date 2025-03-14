@@ -13,8 +13,6 @@ env:
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: false
-  UPLOAD_WETRANSFER: false
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
@@ -40,57 +38,36 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@main
 
-    - name: Reinstall GCC and essential build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install --reinstall -y build-essential gcc g++ g++-multilib
-        gcc --version
-        g++ --version
-
     - name: Install Dependencies
       run: |
-        sudo -E apt-get -qq install ccache \
-        ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-        bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-        git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-        libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool \
-        mkisofs nano ninja-build patch pkgconf python3 python3-pyelftools qemu-utils rsync scons squashfs-tools \
-        subversion swig texinfo upx-ucl unzip vim wget xmlto xxd zlib1g-dev python3-setuptools
-        sudo timedatectl set-timezone "$TZ"
-
-    - name: Set up ccache
-      run: |
-        ccache --max-size=2G
-        ccache --set-config=compression=true
-        ccache --set-config=compression_level=6
-        export PATH="/usr/lib/ccache:$PATH"
-        export CC="ccache gcc"
-        export CXX="ccache g++"
-        ccache -s
-
-    - name: Cache OpenWrt dl directory
-      uses: actions/cache@v3
-      with:
-        path: openwrt/dl
-        key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('openwrt/feeds.conf.default') }}
-        restore-keys: |
-          ${{ runner.os }}-openwrt-dl-
+        sudo apt-get update
+        sudo apt-get install --reinstall -y build-essential gcc g++ g++-multilib libdeflate-dev libdeflate0 ninja-build
 
     - name: Clone Source Code
       run: |
-        git clone --filter=blob:none --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
+        git clone --filter=blob:none --depth=2 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Clean tmp and cache directories
+    - name: Check Git Repository
+      run: |
+        cd openwrt
+        if ! git rev-parse --is-inside-work-tree; then
+          echo "Not inside a Git repository, falling back to full build"
+          echo "FULL_BUILD=true" >> $GITHUB_ENV
+        else
+          echo "FULL_BUILD=false" >> $GITHUB_ENV
+        fi
+
+    - name: Clean tmp and toolchain directories
       run: |
         rm -rf openwrt/tmp/*
-        rm -rf openwrt/staging_dir/target-*
+        rm -rf openwrt/staging_dir/toolchain-*
         rm -rf openwrt/build_dir/target-*
 
     - name: Update & Install Feeds
       run: |
         cd openwrt
-        ./scripts/feeds update -a || (echo "Feed update failed, retrying..." && sleep 5 && ./scripts/feeds update -a)
-        ./scripts/feeds install -a || (echo "Feed install failed, retrying..." && sleep 5 && ./scripts/feeds install -a)
+        ./scripts/feeds update -a || (echo "Retrying feeds update..." && sleep 5 && ./scripts/feeds update -a)
+        ./scripts/feeds install -a || (echo "Retrying feeds install..." && sleep 5 && ./scripts/feeds install -a)
 
     - name: Load Configuration
       run: |
@@ -100,48 +77,32 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
         make defconfig
 
-    - name: Re-fetch Kernel Sources
+    - name: Check if Toolchain Needs Rebuilding
+      run: |
+        if [ ! -d "openwrt/staging_dir/toolchain-*" ] || [ -z "$(ls -A openwrt/staging_dir/toolchain-*/lib/ld-musl-*.so* 2>/dev/null)" ]; then
+          echo "TOOLCHAIN_REBUILD=true" >> $GITHUB_ENV
+        else
+          echo "TOOLCHAIN_REBUILD=false" >> $GITHUB_ENV
+        fi
+
+    - name: Rebuild Toolchain if Needed
+      if: env.TOOLCHAIN_REBUILD == 'true'
       run: |
         cd openwrt
-        make target/linux/clean
-        make target/linux/prepare
+        echo "Toolchain is missing or incomplete, rebuilding..."
+        make toolchain/install -j$(nproc) V=s
 
     - name: Determine Build Type (Full or Incremental)
       run: |
         cd openwrt
-        if git diff --name-only HEAD^ | grep -qE "target|kernel"; then
-            echo "Kernel/Target changed, performing full compile"
+        if [[ "$FULL_BUILD" == "true" ]] || git diff --name-only HEAD^ | grep -qE "target|kernel"; then
+            echo "Performing full compile"
             make -j$(nproc) V=s
         else
-            echo "No Kernel/Target changes, performing incremental compile"
+            echo "Performing incremental compile"
             make package/compile -j$(nproc) V=s
         fi
 
     - name: Show ccache stats
       run: |
         ccache -s
-
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
-      if: env.UPLOAD_RELEASE == 'true'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: openwrt/bin/targets/*/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@v0.1.0
-      if: env.UPLOAD_RELEASE == 'true'
-      with:
-        keep_latest: 3
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
