@@ -33,7 +33,7 @@ jobs:
             device: r3mini
             config_file: r3mini.config
       # 如果你想并行编译两个机型，可以不加 max-parallel 或设大点
-      max-parallel: 2
+      max-parallel: 1
 
     steps:
     - name: Before freeing up disk space
