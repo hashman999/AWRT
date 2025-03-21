@@ -30,13 +30,4 @@ Welcome to XuXu OpenWrt!
 Build Time: $(date)
 -------------------------------------------------------------
 
-System Info:
--------------------------------------------------------------
-Hostname      : $(uci get system.@system[0].hostname)
-OpenWrt Ver.  : $(cat /etc/openwrt_release | grep DISTRIB_DESCRIPTION | cut -d "'" -f2)
-CPU Model     : $(cat /proc/cpuinfo | grep 'model name' | uniq | cut -d ':' -f2)
-Total Memory  : $(free -m | awk '/Mem:/ {print $2}') MB
-Available RAM : $(free -m | awk '/Mem:/ {print $7}') MB
-Load Average  : $(cat /proc/loadavg | awk '{print $1", "$2", "$3}')
--------------------------------------------------------------
 EOF
