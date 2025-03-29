@@ -116,8 +116,8 @@ jobs:
     - name: Install feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    - name: Uninstall mmdvm
-      run: cd openwrt && ./scripts/feeds uninstall {mmdvm,mmdvm-host,p25-clients,ysf-clients,nxdn-clients,mmdvm-luci,dapnet-gateway} && ./scripts/feeds install -a -f -p modem
+    - name: install modem
+      run: cd openwrt  && ./scripts/feeds install -a -f -p modem
 
     - name: Load custom configuration
       run: |
