@@ -224,6 +224,6 @@ jobs:
       with:
         keep_latest: 2
         delete_tags: true
-        delete_tag_pattern: 'r3mini-*'
+        delete_tag_pattern: 'immr3mini-*'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
